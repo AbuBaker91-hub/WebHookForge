@@ -56,7 +56,7 @@ export class EndpointDetailComponent implements OnInit, OnDestroy {
   savingEp = signal(false);
 
   private endpointId = '';
-  private wsId       = '';
+  protected wsId     = '';
   private reqSub?:   Subscription;
 
   ngOnInit(): void {

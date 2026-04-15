@@ -1,7 +1,5 @@
-@if (loading()) { <div class="spinner-overlay"><div class="spinner"></div></div> }
-
-@else if (request(); as req) {
-  <div class="page">
+@if (request(); as req) {
+<div class="page">
     <div class="page-header">
       <div>
         <a class="back-link" [routerLink]="['/workspaces']">← Back</a>
@@ -53,4 +51,8 @@
       </div>
     }
   </div>
+}
+
+@else {
+  <div class="spinner-overlay"><div class="spinner"></div></div>
 }

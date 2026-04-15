@@ -1,16 +1,16 @@
 {
   "/api": {
-    "target": "https://localhost:7000",
+    "target": "http://localhost:5000",
     "secure": false,
     "changeOrigin": true
   },
   "/hooks": {
-    "target": "https://localhost:7000",
+    "target": "http://localhost:5000",
     "secure": false,
     "changeOrigin": true
   },
   "/hubs": {
-    "target": "https://localhost:7000",
+    "target": "http://localhost:5000",
     "secure": false,
     "changeOrigin": true,
     "ws": true
