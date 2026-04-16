@@ -11,6 +11,9 @@ using WebhookForge.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── HTTP client (used by ClaudeService fallback providers) ───────────────────
+builder.Services.AddHttpClient();
+
 // ── Controllers ────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

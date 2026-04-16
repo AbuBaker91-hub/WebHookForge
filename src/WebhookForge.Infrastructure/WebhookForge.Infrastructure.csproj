@@ -9,6 +9,7 @@
     <ProjectReference Include="..\WebhookForge.Application\WebhookForge.Application.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>

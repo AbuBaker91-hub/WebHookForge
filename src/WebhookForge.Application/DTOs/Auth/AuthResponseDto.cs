@@ -19,9 +19,11 @@ public class AuthResponseDto
 /// <summary>Lightweight user info embedded in auth responses and the /auth/me endpoint.</summary>
 public class UserInfoDto
 {
-    public Guid   Id          { get; set; }
-    public string Email       { get; set; } = string.Empty;
-    public string DisplayName { get; set; } = string.Empty;
+    public Guid   Id               { get; set; }
+    public string Email            { get; set; } = string.Empty;
+    public string DisplayName      { get; set; } = string.Empty;
+    /// <summary>Which AI provider the user has configured ("Claude"/"Gemini"/"Groq"), or null if none.</summary>
+    public string? AiProvider { get; set; }
 }
 
 /// <summary>Request body for POST /api/auth/refresh.</summary>
@@ -35,3 +37,6 @@ public class RevokeTokenDto
 {
     public string Token { get; set; } = string.Empty;
 }
+
+/// <summary>Request body for PUT /api/auth/me/ai-settings.</summary>
+public record SaveAiSettingsDto(string? Provider, string? ApiKey);

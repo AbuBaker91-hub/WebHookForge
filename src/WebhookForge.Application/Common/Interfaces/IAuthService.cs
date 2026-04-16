@@ -1,5 +1,6 @@
 using WebhookForge.Application.Common.Models;
 using WebhookForge.Application.DTOs.Auth;
+using WebhookForge.Domain.Enums;
 
 namespace WebhookForge.Application.Common.Interfaces;
 
@@ -27,4 +28,10 @@ public interface IAuthService
 
     /// <summary>Return the authenticated user's profile. Fails if userId is not found.</summary>
     Task<Result<UserInfoDto>> GetProfileAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Save the user's AI provider choice and API key. Pass null to clear.</summary>
+    Task<Result> SaveAiSettingsAsync(Guid userId, AiProvider? provider, string? apiKey, CancellationToken ct = default);
+
+    /// <summary>Return the user's AI provider and key. Both null if not configured.</summary>
+    Task<(AiProvider? Provider, string? ApiKey)> GetAiSettingsAsync(Guid userId, CancellationToken ct = default);
 }

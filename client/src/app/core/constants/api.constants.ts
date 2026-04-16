@@ -19,6 +19,7 @@ export const API = {
     refresh:   ()                    => `${base}/auth/refresh`,
     revoke:    ()                    => `${base}/auth/revoke`,
     me:        ()                    => `${base}/auth/me`,
+    aiSettings: ()                   => `${base}/auth/me/ai-settings`,
   },
 
   workspaces: {
@@ -39,6 +40,7 @@ export const API = {
 
   requests: {
     byId:    (id: string)            => `${base}/requests/${id}`,
+    analyze: (id: string)            => `${base}/requests/${id}/analyze`,
   },
 
   rules: {

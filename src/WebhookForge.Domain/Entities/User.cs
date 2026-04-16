@@ -1,4 +1,5 @@
 using WebhookForge.Domain.Common;
+using WebhookForge.Domain.Enums;
 
 namespace WebhookForge.Domain.Entities;
 
@@ -22,6 +23,12 @@ public class User : BaseEntity
 
     /// <summary>UTC time of the most recent successful login. Null until first login.</summary>
     public DateTime? LastLoginAt { get; set; }
+
+    /// <summary>Selected AI provider. Null means AI not configured.</summary>
+    public AiProvider? AiProvider { get; set; }
+
+    /// <summary>API key for the selected AI provider. Never returned to frontend.</summary>
+    public string? AiApiKey { get; set; }
 
     // ── Navigation ──────────────────────────────────────────────
     /// <summary>Workspaces where this user is the owner.</summary>

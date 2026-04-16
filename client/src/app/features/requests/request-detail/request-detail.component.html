@@ -17,6 +17,27 @@
       <span class="meta-pill">{{ req.sizeBytes | fileSize }}</span>
     </div>
 
+    <!-- AI Analysis -->
+    <div class="card req-section">
+      <div class="section-title">AI Analysis</div>
+      @if (!currentUser()?.aiProvider) {
+        <p class="text-muted text-sm">
+          Add your Anthropic API key in <strong>Settings</strong> (gear icon in the sidebar) to enable AI webhook analysis.
+        </p>
+      } @else if (analysis()) {
+        <p class="ai-analysis-text">{{ analysis() }}</p>
+        <button class="btn btn-ghost btn-sm mt-2" (click)="analyze(req.id)">Re-analyze</button>
+      } @else if (analyzeErr()) {
+        <p class="text-error text-sm">{{ analyzeErr() }}</p>
+        <button class="btn btn-ghost btn-sm mt-2" (click)="analyze(req.id)">Try again</button>
+      } @else {
+        <button class="btn btn-primary btn-sm" [disabled]="analyzing()" (click)="analyze(req.id)">
+          @if (analyzing()) { <span class="btn-spinner"></span> Analyzing... }
+          @else { Analyze with AI }
+        </button>
+      }
+    </div>
+
     @if (req.queryString) {
       <div class="card req-section">
         <div class="section-title">Query string</div>

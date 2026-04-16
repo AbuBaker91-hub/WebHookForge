@@ -2,7 +2,7 @@
 
 **Self-hosted webhook testing & API mocking platform.**
 
-Instantly capture and inspect incoming HTTP requests, define mock responses per endpoint, and watch events arrive live in your dashboard — all running on your own infrastructure with no third-party services required.
+Instantly capture and inspect incoming HTTP requests, define mock responses per endpoint, watch events arrive live in your dashboard, and analyze payloads with AI — all running on your own infrastructure with no third-party services required.
 
 ---
 
@@ -11,6 +11,7 @@ Instantly capture and inspect incoming HTTP requests, define mock responses per 
 | Feature | Description |
 |---|---|
 | **Webhook capture** | Every endpoint gets a unique URL. Any HTTP request to that URL is stored and fully inspectable (headers, body, IP, timing). |
+| **AI analysis** | Analyze any captured request with AI. Supports Claude (Anthropic), Gemini (Google), and Groq (Llama). Each user brings their own API key — no shared server key required. |
 | **API mocking** | Define priority-ordered rules that match by method, path, and body expression. Return a custom status, headers, body, and optional delay. |
 | **Live feed** | Dashboard subscribes via SignalR — new requests appear in real-time without polling. |
 | **Multi-workspace** | Separate teams or projects with role-based access: Viewer, Editor, Admin. |
@@ -27,6 +28,7 @@ Instantly capture and inspect incoming HTTP requests, define mock responses per 
 - **SQL Server 2019+** / Azure SQL
 - **Entity Framework Core 8** — Fluent API mappings, repository + Unit of Work pattern
 - **ASP.NET Core SignalR** — Real-time live request feed
+- **Anthropic.SDK** — Claude AI integration (Haiku model)
 - **BCrypt.Net-Next** — Password hashing
 - **Microsoft.Extensions.Caching.Memory** — In-process endpoint token cache
 - **Swashbuckle / Swagger UI** — API documentation with JWT support
@@ -50,11 +52,11 @@ WebhookForge/
 ├── src/
 │   ├── WebhookForge.Domain/           # Entities, enums — zero external dependencies
 │   ├── WebhookForge.Application/      # Interfaces, DTOs, services, Result<T>
-│   ├── WebhookForge.Infrastructure/   # EF Core, repositories, JWT token service
+│   ├── WebhookForge.Infrastructure/   # EF Core, repositories, JWT, AI providers
 │   └── WebhookForge.API/              # Controllers, SignalR hub, middleware, Program.cs
 ├── database/
 │   ├── schema/
-│   │   ├── 001_create_tables.sql      # All 7 tables with constraints
+│   │   ├── 001_create_tables.sql      # All tables with constraints
 │   │   └── 002_create_indexes.sql     # Performance indexes
 │   └── seed/
 │       └── 001_seed_data.sql          # Demo data (dev only)
@@ -76,7 +78,7 @@ API → Application ← Infrastructure
 
 - **Domain** — pure entities and enums, no external packages
 - **Application** — depends only on Domain; owns interfaces and business logic
-- **Infrastructure** — implements Application interfaces (EF Core, JWT, BCrypt, cache)
+- **Infrastructure** — implements Application interfaces (EF Core, JWT, BCrypt, AI providers)
 - **API** — composes everything via DI, handles HTTP transport and SignalR
 
 ---
@@ -110,7 +112,14 @@ Run in SSMS, Azure Data Studio, or `sqlcmd`:
 CREATE DATABASE WebhookForge;
 ```
 
-Then apply the schema scripts in order:
+Then apply EF Core migrations:
+
+```bash
+cd src/WebhookForge.API
+dotnet ef database update
+```
+
+Or apply the schema scripts manually:
 
 ```bash
 sqlcmd -S localhost -d WebhookForge -i database/schema/001_create_tables.sql
@@ -173,13 +182,10 @@ Frontend available at `http://localhost:4200`. The dev proxy (`proxy.conf.json`)
 
 ## Sending your first webhook
 
-1. Open Swagger at `http://localhost:5000/swagger`
-2. Register — `POST /api/auth/register`
-3. Login — `POST /api/auth/login`, copy the `accessToken`
-4. Authorize in Swagger (click the padlock, paste the token)
-5. Create a workspace — `POST /api/workspaces`
-6. Create an endpoint — `POST /api/workspaces/{id}/endpoints`
-7. Copy the `token` from the response and fire a request:
+1. Open the frontend at `http://localhost:4200` and register an account
+2. Create a workspace, then create an endpoint inside it
+3. Copy the webhook URL from the endpoint detail page
+4. Send any HTTP request to that URL:
 
 ```bash
 curl -X POST http://localhost:5000/hooks/YOUR_TOKEN \
@@ -187,8 +193,33 @@ curl -X POST http://localhost:5000/hooks/YOUR_TOKEN \
   -d '{"event":"order.created","orderId":42}'
 ```
 
-8. Check `GET /api/endpoints/{endpointId}/requests` — the request is captured with full headers, body, and timing.
-9. Open the Angular frontend dashboard to see it arrive in the live feed.
+5. The request appears instantly in the live feed and is fully inspectable (headers, body, IP, timing).
+
+---
+
+## AI analysis
+
+Each user can configure their own AI provider to analyze captured webhook requests in plain English.
+
+### Setup
+
+1. Click the **gear icon** in the sidebar footer
+2. Select your AI provider and paste your API key
+3. Click **Save settings**
+
+### Supported providers
+
+| Provider | Model | Where to get a key |
+|---|---|---|
+| **Claude** (Anthropic) | `claude-haiku-4-5-20251001` | [console.anthropic.com](https://console.anthropic.com) |
+| **Gemini** (Google) | `gemini-2.5-flash` | [aistudio.google.com](https://aistudio.google.com) — free tier available |
+| **Groq** (Llama) | `llama-3.1-8b-instant` | [console.groq.com](https://console.groq.com) — free tier available |
+
+### How it works
+
+- API keys are stored per-user in the database — never returned to the frontend
+- Open any captured request → click **Analyze with AI**
+- The backend routes the request to your configured provider and returns a plain-English summary identifying the source service, event type, key data points, and recommended action
 
 ---
 
@@ -233,11 +264,8 @@ const connection = new HubConnectionBuilder()
   .build();
 
 await connection.start();
-
-// Subscribe to a specific endpoint's feed
 await connection.invoke('Subscribe', endpointId);
 
-// New requests arrive here
 connection.on('NewRequest', (request) => {
   console.log(request);
 });
@@ -254,6 +282,7 @@ connection.on('NewRequest', (request) => {
 | POST | `/api/auth/refresh` | — | Rotate refresh token |
 | POST | `/api/auth/revoke` | JWT | Revoke a refresh token |
 | GET | `/api/auth/me` | JWT | Current user profile |
+| PUT | `/api/auth/me/ai-settings` | JWT | Save AI provider + API key |
 | GET | `/api/workspaces` | JWT | List my workspaces |
 | POST | `/api/workspaces` | JWT | Create workspace |
 | GET | `/api/workspaces/{id}` | JWT | Get workspace |
@@ -270,6 +299,7 @@ connection.on('NewRequest', (request) => {
 | GET | `/api/endpoints/{id}/requests` | JWT | Paginated request history |
 | DELETE | `/api/endpoints/{id}/requests` | JWT | Purge old requests |
 | GET | `/api/requests/{id}` | JWT | Single request detail |
+| POST | `/api/requests/{id}/analyze` | JWT | Analyze request with AI |
 | GET | `/api/endpoints/{id}/rules` | JWT | List mock rules |
 | POST | `/api/endpoints/{id}/rules` | JWT | Create rule |
 | GET | `/api/mock-rules/{id}` | JWT | Get rule |
@@ -283,15 +313,13 @@ connection.on('NewRequest', (request) => {
 
 ## Production checklist
 
-Before deploying to a shared environment:
-
-- [ ] Set `Jwt:Secret` to a strong random value (32+ chars) — use environment variables or Azure Key Vault, never the appsettings file
-- [ ] Use SQL authentication or a managed identity instead of Trusted_Connection
+- [ ] Set `Jwt:Secret` to a strong random value (32+ chars) via environment variables or Azure Key Vault
+- [ ] Use SQL authentication or a managed identity instead of `Trusted_Connection`
 - [ ] Enable HTTPS-only (`app.UseHsts()` + redirect)
 - [ ] Set `AllowedOrigins` to your actual frontend domain(s)
 - [ ] Remove or restrict the seed data endpoint
-- [ ] Schedule a periodic purge of old `IncomingRequests` rows (keep your table size in check)
-- [ ] Set `AccessTokenExpiryMinutes` to something shorter (15 minutes is a reasonable default)
+- [ ] Schedule periodic purge of old `IncomingRequests` rows
+- [ ] Set `AccessTokenExpiryMinutes` to 15 minutes for production
 - [ ] Review rate limiter limits for your expected traffic
 
 ---

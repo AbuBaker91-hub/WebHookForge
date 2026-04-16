@@ -22,4 +22,8 @@ export class RequestService {
       { params: { olderThanDays } }
     );
   }
+
+  analyze(id: string) {
+    return this.http.post<{ analysis: string }>(API.requests.analyze(id), {});
+  }
 }

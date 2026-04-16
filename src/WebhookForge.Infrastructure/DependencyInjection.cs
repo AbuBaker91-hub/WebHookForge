@@ -48,6 +48,9 @@ public static class DependencyInjection
         // ── Token service ─────────────────────────────────────────
         services.AddScoped<ITokenService, TokenService>();
 
+        // ── AI Analysis service (Claude / Gemini / Groq) ─────────
+        services.AddScoped<IAiAnalysisService, AiAnalysisService>();
+
         return services;
     }
 }

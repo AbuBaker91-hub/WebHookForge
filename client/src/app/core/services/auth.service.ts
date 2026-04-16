@@ -60,6 +60,15 @@ export class AuthService {
       .pipe(tap(r => this.applySession(r)));
   }
 
+  saveAiSettings(provider: string | null, apiKey: string | null) {
+    return this.http.put(API.auth.aiSettings(), { provider, apiKey }).pipe(
+      tap(() => {
+        const user = this._user();
+        if (user) this._user.set({ ...user, aiProvider: provider as any });
+      })
+    );
+  }
+
   logout(): void {
     const rt = sessionStorage.getItem(this.REFRESH_KEY);
     if (rt) {

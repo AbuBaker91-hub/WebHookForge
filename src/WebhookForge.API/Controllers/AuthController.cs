@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WebhookForge.Application.Common.Interfaces;
 using WebhookForge.Application.DTOs.Auth;
+using WebhookForge.Domain.Enums;
+
 
 namespace WebhookForge.API.Controllers;
 
@@ -44,4 +46,13 @@ public class AuthController : BaseController
     [Authorize]
     public async Task<IActionResult> Me(CancellationToken ct)
         => ToActionResult(await _auth.GetProfileAsync(CurrentUserId, ct));
+
+    /// <summary>Save the user's AI provider and API key.</summary>
+    [HttpPut("me/ai-settings")]
+    [Authorize]
+    public async Task<IActionResult> SaveAiSettings([FromBody] SaveAiSettingsDto dto, CancellationToken ct)
+    {
+        AiProvider? provider = Enum.TryParse<AiProvider>(dto.Provider, ignoreCase: true, out var p) ? p : null;
+        return ToActionResult(await _auth.SaveAiSettingsAsync(CurrentUserId, provider, dto.ApiKey, ct));
+    }
 }

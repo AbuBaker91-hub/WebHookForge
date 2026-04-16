@@ -10,9 +10,12 @@ export interface AuthResponse {
   user:         CurrentUser;
 }
 
+export type AiProvider = 'Claude' | 'Gemini' | 'Groq';
+
 /** Subset of user info kept in-memory after login. No sensitive fields. */
 export interface CurrentUser {
-  id:          string;   // GUID
+  id:          string;
   email:       string;
   displayName: string;
+  aiProvider:  AiProvider | null;
 }

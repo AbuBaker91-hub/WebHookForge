@@ -1,8 +1,9 @@
 using WebhookForge.Application.Common.Interfaces;
 using WebhookForge.Application.Common.Models;
 using WebhookForge.Application.DTOs.Auth;
-using WebhookForge.Domain.Entities;
 using WebhookForge.Application.Common.Settings;
+using WebhookForge.Domain.Entities;
+using WebhookForge.Domain.Enums;
 using Microsoft.Extensions.Options;
 
 namespace WebhookForge.Application.Services;
@@ -129,10 +130,31 @@ public class AuthService : IAuthService
         };
     }
 
+    /// <inheritdoc/>
+    public async Task<Result> SaveAiSettingsAsync(Guid userId, AiProvider? provider, string? apiKey, CancellationToken ct = default)
+    {
+        var user = await _uow.Users.GetByIdAsync(userId, ct);
+        if (user is null) return Result.NotFound("User not found.");
+
+        user.AiProvider = provider;
+        user.AiApiKey   = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
+        await _uow.Users.UpdateAsync(user, ct);
+        await _uow.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    /// <inheritdoc/>
+    public async Task<(AiProvider? Provider, string? ApiKey)> GetAiSettingsAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _uow.Users.GetByIdAsync(userId, ct);
+        return (user?.AiProvider, user?.AiApiKey);
+    }
+
     private static UserInfoDto ToUserInfo(User u) => new()
     {
         Id          = u.Id,
         Email       = u.Email,
-        DisplayName = u.DisplayName
+        DisplayName = u.DisplayName,
+        AiProvider  = u.AiProvider?.ToString()
     };
 }
