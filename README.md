@@ -322,8 +322,9 @@ connection.on('NewRequest', (request) => {
 - [ ] Schedule periodic purge of old `IncomingRequests` rows
 - [ ] Keep `AccessTokenExpiryMinutes` short (15 min default) and rotate `Jwt:Secret` periodically
 - [ ] Persist the Data Protection keyring to a durable, shared store (e.g. Azure Blob Storage protected by Key Vault) so encrypted AI keys survive restarts and are readable across instances
-- [ ] If running behind a reverse proxy / load balancer, configure `ForwardedHeaders` so the rate limiter partitions on the real client IP
+- [ ] If running behind a reverse proxy / load balancer, set `ForwardedHeaders:Enabled=true` and list the proxy IPs in `ForwardedHeaders:KnownProxies` so the rate limiter partitions on the real client IP (off by default; `X-Forwarded-For` is otherwise ignored and cannot be spoofed)
 - [ ] Tune `RateLimiting:PermitLimit` / `RateLimiting:WindowSeconds` for your expected traffic (default 120 / 60s per IP)
+- [ ] The public webhook endpoint caps payloads at 5 MB (413 above that); adjust `MaxBodyBytes` if your sources send larger bodies
 
 ---
 

@@ -57,7 +57,9 @@ npm run build      # production build
 - **Passwords:** BCrypt. Login runs `BCrypt.Verify` against a dummy hash when the user doesn't exist, so timing is constant whether or not the email is registered — do not reintroduce a short-circuit that skips verification for unknown users.
 - **AI API keys:** encrypted at rest with ASP.NET Core Data Protection (`IApiKeyProtector`). Persist only ciphertext; decrypt on demand in `AuthService.GetAiSettingsAsync`; never return the key to the frontend.
 - **Provider keys in transit:** pass keys via request headers (Claude/Groq `Authorization`, Gemini `x-goog-api-key`) — never in the URL/query string.
-- **Rate limiting:** the public webhook receiver is rate-limited per client IP (partitioned fixed window, 120 req/min each) — keep it partitioned so one IP cannot exhaust the limit for others.
+- **Rate limiting:** the public webhook receiver is rate-limited per client IP (partitioned fixed window, configurable via `RateLimiting:*`, default 120/60s) — keep it partitioned so one IP cannot exhaust the limit for others. `X-Forwarded-For` is ignored unless `ForwardedHeaders:Enabled` + `KnownProxies` are set.
+- **Payload size:** the public webhook endpoint caps bodies at 5 MB (`WebhookReceiverController.MaxBodyBytes`) and rejects larger with 413 before buffering — don't remove the guard.
+- **HTTP clients:** AI providers share one pooled, injected `HttpClient` (`AddHttpClient<IAiAnalysisService, AiAnalysisService>`); Claude reuses it too. Don't `new HttpClient()` per request (socket leak).
 - **Secrets:** `Jwt:Secret` must be ≥32 chars and supplied via env vars / a secrets manager in production, never committed.
 
 ## Gotchas

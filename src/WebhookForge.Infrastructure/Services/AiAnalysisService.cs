@@ -43,9 +43,11 @@ public class AiAnalysisService : IAiAnalysisService
 
     // ── Provider implementations ──────────────────────────────────
 
-    private static async Task<string> CallClaudeAsync(string apiKey, string prompt, CancellationToken ct)
+    private async Task<string> CallClaudeAsync(string apiKey, string prompt, CancellationToken ct)
     {
-        var client   = new AnthropicClient(apiKey);
+        // Reuse the injected (pooled) HttpClient instead of allocating a new one per call,
+        // which would leak sockets under load. We pass our client, so we don't dispose it here.
+        var client   = new AnthropicClient(apiKey, _http);
         var response = await client.Messages.GetClaudeMessageAsync(new MessageParameters
         {
             Model     = "claude-haiku-4-5-20251001",

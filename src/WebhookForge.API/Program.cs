@@ -1,6 +1,8 @@
+using System.Net;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -143,6 +145,19 @@ var app = builder.Build();
 
 // Must be first — catches anything the rest of the pipeline throws
 app.UseMiddleware<ExceptionMiddleware>();
+
+// Behind a reverse proxy/load balancer, rewrite RemoteIpAddress from X-Forwarded-For so the
+// per-IP rate limiter keys on the real client. OFF by default; only trusts the proxies you list,
+// so the header can't be spoofed by arbitrary clients. Must run before UseRateLimiter.
+if (builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
+{
+    var fho = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor };
+    fho.KnownProxies.Clear();
+    fho.KnownNetworks.Clear();
+    foreach (var proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
+        if (IPAddress.TryParse(proxy, out var ip)) fho.KnownProxies.Add(ip);
+    app.UseForwardedHeaders(fho);
+}
 
 if (app.Environment.IsDevelopment())
 {

@@ -94,6 +94,19 @@ public class AdversarialEndpointTests : IClassFixture<WebhookForgeApiFactory>
 
         Assert.True((int)res.StatusCode < 500, $"Server error on OPTIONS: {(int)res.StatusCode}");
     }
+
+    [Fact] // TC-ADV-08 — a payload over the 5 MB cap is rejected (413), not buffered into memory
+    public async Task PayloadOverLimit_IsRejected()
+    {
+        var ep = await NewEndpointAsync();
+        var anon = _factory.CreateClient();
+        var tooBig = new string('x', 6_000_000); // 6 MB > 5 MB cap
+
+        var res = await anon.PostAsync($"/hooks/{ep.Token}",
+            new StringContent(tooBig, Encoding.UTF8, "text/plain"));
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, res.StatusCode); // 413
+    }
 }
 
 /// <summary>

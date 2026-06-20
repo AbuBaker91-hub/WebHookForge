@@ -18,6 +18,10 @@ namespace WebhookForge.API.Controllers;
 [EnableRateLimiting("webhook")]
 public class WebhookReceiverController : ControllerBase
 {
+    /// <summary>Max accepted webhook payload (bytes). Larger requests are rejected with 413
+    /// before the body is buffered, so a flood of huge payloads can't exhaust memory.</summary>
+    private const long MaxBodyBytes = 5_000_000; // 5 MB
+
     private readonly IRequestService          _requests;
     private readonly IMockRuleService         _mockRules;
     private readonly IHubContext<WebhookHub>  _hub;
@@ -37,8 +41,14 @@ public class WebhookReceiverController : ControllerBase
     [HttpPut("{token}")]
     [HttpPatch("{token}")]
     [HttpDelete("{token}")]
+    [RequestSizeLimit(MaxBodyBytes)] // Kestrel-level guard (covers chunked uploads with no Content-Length)
     public async Task<IActionResult> Receive(string token, CancellationToken ct)
     {
+        // Explicit Content-Length guard: reject oversized payloads up front, before buffering
+        // the body into memory. (Works on every server, including chunked-aware hosts.)
+        if (Request.ContentLength is > MaxBodyBytes)
+            return StatusCode(413, new { error = "Payload too large." });
+
         // Read body and serialize headers to JSON — both can happen in parallel
         var bodyTask    = ReadBodyAsync(ct);
         var headersJson = JsonSerializer.Serialize(

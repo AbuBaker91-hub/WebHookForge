@@ -106,6 +106,7 @@ Every issue raised in the code review is now pinned by a test:
 | TC-ADV-05 | `VeryLongToken_IsHandledGracefully` | A 4000-char token does not 500 |
 | TC-ADV-06 | `UnsupportedMethod_DoesNotServerError` | `OPTIONS /hooks/{token}` does not 500 |
 | TC-ADV-07 | `SpoofingXForwardedFor_DoesNotBypassPerIpLimit` | Rotating `X-Forwarded-For` does **not** grant fresh quota (the app keys on the real connection IP, not the untrusted header) |
+| TC-ADV-08 | `PayloadOverLimit_IsRejected` | A payload over the 5 MB cap is rejected with 413 before the body is buffered into memory |
 
 ### Unit — API key protection (`ApiKeyProtectorTests`)
 | ID | Test | Asserts |
@@ -132,11 +133,11 @@ Every issue raised in the code review is now pinned by a test:
 ```
 # InMemory (default)
 dotnet test tests/WebhookForge.Tests
-Passed!  - Failed: 0, Passed: 44, Skipped: 0, Total: 44, Duration: ~44 s
+Passed!  - Failed: 0, Passed: 45, Skipped: 0, Total: 45, Duration: ~39 s
 
-# Against the real SQL Server engine (LocalDB) — same 44 tests
+# Against the real SQL Server engine (LocalDB) — same 45 tests
 WEBHOOKFORGE_TEST_SQL_SERVER='(localdb)\MSSQLLocalDB' dotnet test tests/WebhookForge.Tests
-Passed!  - Failed: 0, Passed: 44, Skipped: 0, Total: 44, Duration: ~57 s
+Passed!  - Failed: 0, Passed: 45, Skipped: 0, Total: 45, Duration: ~52 s
 ```
 
 The full suite passes identically on InMemory and on real SQL Server, so the functional/regression behavior is validated against the live database engine.
@@ -171,3 +172,21 @@ pwsh tests/run-load-test.ps1 -Mode ratelimit  -DurationSec 20 -Concurrency 64
 - *Under flood* — a single IP firing ~193k requests in 20 s had only its ~120/min quota admitted; the other **193,402 were rejected at ~5 ms each** — roughly 50× cheaper than an admitted DB write. The per-IP limiter shields the database under abuse exactly as intended, and (TC-ADV-07) `X-Forwarded-For` spoofing can't reset the bucket.
 
 > These are dev-machine figures meant to validate behavior and relative cost, not a capacity guarantee. Re-run on target hardware for sizing.
+
+---
+
+## Memory & performance hardening
+
+Each known resource/performance concern and how it's mitigated and verified:
+
+| Concern | Mitigation | Where | Evidence |
+|---|---|---|---|
+| `HttpClient` socket exhaustion (one client per AI call) | All providers use a single **pooled, injected** `HttpClient`; Claude reuses it too (`new AnthropicClient(apiKey, _http)`) instead of allocating per call | `AiAnalysisService`, registered via `AddHttpClient<IAiAnalysisService, AiAnalysisService>()` | Load run: 0 errors over 9,173 calls |
+| Unbounded webhook payload → memory exhaustion | Reject payloads over **5 MB** with 413 *before* buffering the body (explicit Content-Length guard + `[RequestSizeLimit]` for chunked uploads) | `WebhookReceiverController.Receive` | `TC-ADV-08` |
+| One IP exhausting capacity for everyone | Per-IP partitioned rate limiter (configurable); rejects cheaply (~5 ms) without touching the DB | `Program.cs` rate limiter | `TC-RATE-01..04`, load "under flood" run |
+| DB round-trip on every public webhook hit | Token→endpoint lookup cached in-memory with dual-key eviction | `EndpointRepository` | Hot path covered by `TC-HOOK-*` |
+| Throwaway test databases left behind | Each SQL-mode factory drops its database on dispose | `WebhookForgeApiFactory.Dispose` | Post-run check: no `WebhookForge%` DBs remain |
+| BCrypt cost as a timing oracle | Constant-time login (verify against a dummy hash for unknown users) | `AuthService.LoginAsync` | `TC-TIMING-01` |
+
+### Reverse-proxy note
+The per-IP limiter keys on the real connection IP. `X-Forwarded-For` is **ignored by default** (proven by `TC-ADV-07`), so it can't be spoofed to evade the limit. Behind a trusted proxy, set `ForwardedHeaders:Enabled=true` and list the proxy IPs in `ForwardedHeaders:KnownProxies` so the limiter sees the real client.
