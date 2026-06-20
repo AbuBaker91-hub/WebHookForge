@@ -15,15 +15,30 @@ namespace WebhookForge.Application.Services;
 /// </summary>
 public class AuthService : IAuthService
 {
-    private readonly IUnitOfWork   _uow;
-    private readonly ITokenService _tokens;
-    private readonly JwtSettings   _jwt;
+    private readonly IUnitOfWork      _uow;
+    private readonly ITokenService    _tokens;
+    private readonly IApiKeyProtector _protector;
+    private readonly JwtSettings      _jwt;
 
-    public AuthService(IUnitOfWork uow, ITokenService tokens, IOptions<JwtSettings> jwt)
+    /// <summary>
+    /// A precomputed BCrypt hash verified against whenever the supplied email
+    /// has no matching user. This keeps the work factor (and therefore the
+    /// response time) identical for existing and non-existing accounts, so an
+    /// attacker cannot enumerate valid emails by timing the login endpoint.
+    /// </summary>
+    private static readonly string DummyHash =
+        BCrypt.Net.BCrypt.HashPassword("timing-attack-mitigation-placeholder");
+
+    public AuthService(
+        IUnitOfWork uow,
+        ITokenService tokens,
+        IApiKeyProtector protector,
+        IOptions<JwtSettings> jwt)
     {
-        _uow    = uow;
-        _tokens = tokens;
-        _jwt    = jwt.Value;
+        _uow       = uow;
+        _tokens    = tokens;
+        _protector = protector;
+        _jwt       = jwt.Value;
     }
 
     /// <inheritdoc/>
@@ -50,11 +65,12 @@ public class AuthService : IAuthService
     {
         var user = await _uow.Users.GetByEmailAsync(dto.Email, ct);
 
-        // Constant-time comparison: always verify even on missing user to resist timing attacks
-        var passwordOk = user is not null
-                      && BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
+        // Always run BCrypt.Verify — against the real hash when the user exists,
+        // otherwise against a dummy hash — so the endpoint takes the same time
+        // whether or not the email is registered (resists user-enumeration via timing).
+        var passwordOk = BCrypt.Net.BCrypt.Verify(dto.Password, user?.PasswordHash ?? DummyHash);
 
-        if (!passwordOk || user is null)
+        if (user is null || !passwordOk)
             return Result<AuthResponseDto>.Unauthorized("Invalid email or password.");
 
         if (!user.IsActive)
@@ -137,7 +153,8 @@ public class AuthService : IAuthService
         if (user is null) return Result.NotFound("User not found.");
 
         user.AiProvider = provider;
-        user.AiApiKey   = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
+        // Encrypt the API key at rest — only the protected ciphertext is persisted.
+        user.AiApiKey   = _protector.Protect(string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim());
         await _uow.Users.UpdateAsync(user, ct);
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
@@ -147,7 +164,8 @@ public class AuthService : IAuthService
     public async Task<(AiProvider? Provider, string? ApiKey)> GetAiSettingsAsync(Guid userId, CancellationToken ct = default)
     {
         var user = await _uow.Users.GetByIdAsync(userId, ct);
-        return (user?.AiProvider, user?.AiApiKey);
+        // Decrypt on demand; never store or transmit the plaintext key elsewhere.
+        return (user?.AiProvider, _protector.Unprotect(user?.AiApiKey));
     }
 
     private static UserInfoDto ToUserInfo(User u) => new()

@@ -11,12 +11,12 @@ Instantly capture and inspect incoming HTTP requests, define mock responses per 
 | Feature | Description |
 |---|---|
 | **Webhook capture** | Every endpoint gets a unique URL. Any HTTP request to that URL is stored and fully inspectable (headers, body, IP, timing). |
-| **AI analysis** | Analyze any captured request with AI. Supports Claude (Anthropic), Gemini (Google), and Groq (Llama). Each user brings their own API key — no shared server key required. |
+| **AI analysis** | Analyze any captured request with AI. Supports Claude (Anthropic), Gemini (Google), and Groq (Llama). Each user brings their own API key — stored encrypted at rest, no shared server key required. |
 | **API mocking** | Define priority-ordered rules that match by method, path, and body expression. Return a custom status, headers, body, and optional delay. |
 | **Live feed** | Dashboard subscribes via SignalR — new requests appear in real-time without polling. |
 | **Multi-workspace** | Separate teams or projects with role-based access: Viewer, Editor, Admin. |
-| **JWT authentication** | Stateless access tokens (60 min) + long-lived refresh token rotation (30 days). No third-party auth dependency. |
-| **Rate limiting** | Public webhook endpoint is protected with a fixed-window rate limiter (120 req/min per IP). |
+| **JWT authentication** | Stateless access tokens (15 min) + long-lived refresh token rotation (30 days). No third-party auth dependency. |
+| **Rate limiting** | Public webhook endpoint is protected with a fixed-window rate limiter, partitioned per client IP (120 req/min each). |
 | **In-process caching** | Endpoint token lookups are cached in-memory with dual-key eviction, keeping hot paths off the database. |
 
 ---
@@ -30,6 +30,7 @@ Instantly capture and inspect incoming HTTP requests, define mock responses per 
 - **ASP.NET Core SignalR** — Real-time live request feed
 - **Anthropic.SDK** — Claude AI integration (Haiku model)
 - **BCrypt.Net-Next** — Password hashing
+- **ASP.NET Core Data Protection** — Encrypts user AI API keys at rest
 - **Microsoft.Extensions.Caching.Memory** — In-process endpoint token cache
 - **Swashbuckle / Swagger UI** — API documentation with JWT support
 
@@ -144,7 +145,7 @@ Edit `src/WebhookForge.API/appsettings.Development.json`:
     "Secret": "YOUR_SECRET_AT_LEAST_32_CHARACTERS_LONG",
     "Issuer": "WebhookForge",
     "Audience": "WebhookForge",
-    "AccessTokenExpiryMinutes": 60,
+    "AccessTokenExpiryMinutes": 15,
     "RefreshTokenExpiryDays": 30
   },
   "AllowedOrigins": ["http://localhost:4200"]
@@ -217,7 +218,7 @@ Each user can configure their own AI provider to analyze captured webhook reques
 
 ### How it works
 
-- API keys are stored per-user in the database — never returned to the frontend
+- API keys are stored per-user, encrypted at rest via ASP.NET Core Data Protection — never returned to the frontend, and passed to providers via request headers (never in URLs)
 - Open any captured request → click **Analyze with AI**
 - The backend routes the request to your configured provider and returns a plain-English summary identifying the source service, event type, key data points, and recommended action
 
@@ -302,10 +303,10 @@ connection.on('NewRequest', (request) => {
 | POST | `/api/requests/{id}/analyze` | JWT | Analyze request with AI |
 | GET | `/api/endpoints/{id}/rules` | JWT | List mock rules |
 | POST | `/api/endpoints/{id}/rules` | JWT | Create rule |
-| GET | `/api/mock-rules/{id}` | JWT | Get rule |
-| PUT | `/api/mock-rules/{id}` | JWT | Update rule |
-| DELETE | `/api/mock-rules/{id}` | JWT | Delete rule |
-| PATCH | `/api/mock-rules/{id}/toggle` | JWT | Enable / disable rule |
+| GET | `/api/rules/{id}` | JWT | Get rule |
+| PUT | `/api/rules/{id}` | JWT | Update rule |
+| DELETE | `/api/rules/{id}` | JWT | Delete rule |
+| PATCH | `/api/rules/{id}/toggle` | JWT | Enable / disable rule |
 | PUT | `/api/endpoints/{id}/rules/reorder` | JWT | Bulk reorder by priority |
 | ANY | `/hooks/{token}` | — | **Public** — receive webhook |
 
@@ -319,8 +320,22 @@ connection.on('NewRequest', (request) => {
 - [ ] Set `AllowedOrigins` to your actual frontend domain(s)
 - [ ] Remove or restrict the seed data endpoint
 - [ ] Schedule periodic purge of old `IncomingRequests` rows
-- [ ] Set `AccessTokenExpiryMinutes` to 15 minutes for production
+- [ ] Keep `AccessTokenExpiryMinutes` short (15 min default) and rotate `Jwt:Secret` periodically
+- [ ] Persist the Data Protection keyring to a durable, shared store (e.g. Azure Blob Storage protected by Key Vault) so encrypted AI keys survive restarts and are readable across instances
+- [ ] If running behind a reverse proxy / load balancer, configure `ForwardedHeaders` so the rate limiter partitions on the real client IP
 - [ ] Review rate limiter limits for your expected traffic
+
+---
+
+## Testing
+
+Automated tests live in `tests/WebhookForge.Tests` (integration via `WebApplicationFactory`, unit, and regression):
+
+```bash
+dotnet test
+```
+
+The suite runs against EF Core InMemory and a stubbed AI provider, so no SQL Server or provider key is needed. See [docs/TESTING.md](docs/TESTING.md) for the full test catalog and the mapping of each security fix to its regression test.
 
 ---
 

@@ -32,7 +32,7 @@ public class CreateMockRuleDto
     public int DelayMs { get; set; }
 }
 
-/// <summary>Request body for PUT /api/mock-rules/{id}. Inherits all create fields and adds IsActive.</summary>
+/// <summary>Request body for PUT /api/rules/{id}. Inherits all create fields and adds IsActive.</summary>
 public class UpdateMockRuleDto : CreateMockRuleDto
 {
     public bool IsActive { get; set; } = true;
