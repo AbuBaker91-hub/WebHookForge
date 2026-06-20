@@ -35,6 +35,7 @@ dotnet build WebhookForge.sln
 dotnet test                                        # tests/WebhookForge.Tests (InMemory) — see docs/TESTING.md
 # Same suite against real SQL Server:  $env:WEBHOOKFORGE_TEST_SQL_SERVER='(localdb)\MSSQLLocalDB'; dotnet test
 # Live load test:                      pwsh tests/run-load-test.ps1 -Mode throughput|ratelimit
+# Live AI provider tests (opt-in):     $env:WEBHOOKFORGE_GROQ_KEY='...'; dotnet test --filter Live  (skipped without a key)
 dotnet run --project src/WebhookForge.API          # http://localhost:5000, swagger at /swagger
 dotnet ef database update --project src/WebhookForge.Infrastructure --startup-project src/WebhookForge.API
 dotnet ef migrations add <Name> --project src/WebhookForge.Infrastructure --startup-project src/WebhookForge.API

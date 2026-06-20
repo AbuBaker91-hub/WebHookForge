@@ -29,6 +29,7 @@ The suite mixes three styles:
 | **Integration** | `WebApplicationFactory<Program>` boots the **real** API with its full middleware pipeline (JWT auth, Data Protection, rate limiter, routing). SQL Server is swapped for EF Core **InMemory** (isolated per test class); the live AI provider is swapped for a deterministic stub. | End-to-end HTTP behavior — real requests in, real responses out. |
 | **Unit** | Classes constructed directly with fakes (`EphemeralDataProtectionProvider`, a capturing `HttpMessageHandler`). | Isolated logic — encryption, outbound provider HTTP shape. |
 | **Regression** | Targeted tests that lock in the interview-review fixes so they can't silently regress. | The specific security guarantees below. |
+| **Live (opt-in)** | `LiveAiProviderTests` call the real Groq/Gemini/Claude APIs; each is **skipped** unless its key env var is set. | Real provider integration when you supply a key. |
 
 Test host plumbing lives in `tests/WebhookForge.Tests/Infrastructure/`:
 - `WebhookForgeApiFactory` — boots the app, swaps DB + AI provider, adds the IP-spoofing filter.
@@ -128,6 +129,20 @@ Every issue raised in the code review is now pinned by a test:
 |---|---|---|
 | TC-TIMING-01 | `UnknownUserLogin_IncursBcryptCost_LikeWrongPassword` | Unknown-user login still pays the BCrypt cost (≥5 ms, same ballpark as the real path) |
 
+### Live — real AI providers, opt-in (`LiveAiProviderTests`)
+Automated counterpart to the manual "configure a key and click Analyze" smoke test. Each case makes a **real outbound call** to the provider and is **skipped unless its key env var is set**, so default runs/CI stay green with no network calls.
+
+| ID | Test | Runs when | Asserts |
+|---|---|---|---|
+| TC-LIVE-01 | `Analyze_WithRealProvider_ReturnsPlausibleSummary` (Groq) | `WEBHOOKFORGE_GROQ_KEY` set | A real Groq call returns a non-empty, non-error summary |
+| TC-LIVE-02 | …(Gemini) | `WEBHOOKFORGE_GEMINI_KEY` set | A real Gemini call returns a non-empty, non-error summary |
+| TC-LIVE-03 | …(Claude) | `WEBHOOKFORGE_CLAUDE_KEY` set | A real Claude call returns a non-empty, non-error summary |
+
+```powershell
+$env:WEBHOOKFORGE_GROQ_KEY = '...'   # free tier at console.groq.com
+dotnet test --filter "FullyQualifiedName~Live"
+```
+
 ## Latest run
 
 ```
@@ -142,9 +157,11 @@ Passed!  - Failed: 0, Passed: 45, Skipped: 0, Total: 45, Duration: ~52 s
 
 The full suite passes identically on InMemory and on real SQL Server, so the functional/regression behavior is validated against the live database engine.
 
+The 3 `Live` AI-provider tests are **skipped** unless their key env vars are set (no keys → `Passed: 45, Skipped: 3`).
+
 > Notes
-> - Integration tests run against a stubbed AI provider, so **no real provider key is required**.
-> - To smoke-test a **real** AI provider end-to-end, configure a key in the running app (Settings → provider + key) and call `POST /api/requests/{id}/analyze`; the stub is only substituted inside the test host.
+> - Integration tests run against a stubbed AI provider, so **no real provider key is required** for the 45 core tests.
+> - Real provider calls are automated but **opt-in** via `LiveAiProviderTests` (set a key env var; otherwise skipped). You can still smoke-test manually in the running app (Settings → provider + key → `POST /api/requests/{id}/analyze`).
 
 ---
 

@@ -343,6 +343,13 @@ pwsh tests/run-load-test.ps1 -Mode throughput   # raw capture capacity
 pwsh tests/run-load-test.ps1 -Mode ratelimit    # per-IP limiter under flood
 ```
 
+Real AI-provider calls are covered by **opt-in** tests that only run when you supply a key (otherwise skipped):
+
+```powershell
+$env:WEBHOOKFORGE_GROQ_KEY = '...'              # or WEBHOOKFORGE_GEMINI_KEY / WEBHOOKFORGE_CLAUDE_KEY
+dotnet test --filter "FullyQualifiedName~Live"
+```
+
 See [docs/TESTING.md](docs/TESTING.md) for the full test catalog, the mapping of each security fix to its regression test, and the latest load-test numbers.
 
 ---
