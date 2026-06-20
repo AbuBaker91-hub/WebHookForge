@@ -323,7 +323,7 @@ connection.on('NewRequest', (request) => {
 - [ ] Keep `AccessTokenExpiryMinutes` short (15 min default) and rotate `Jwt:Secret` periodically
 - [ ] Persist the Data Protection keyring to a durable, shared store (e.g. Azure Blob Storage protected by Key Vault) so encrypted AI keys survive restarts and are readable across instances
 - [ ] If running behind a reverse proxy / load balancer, configure `ForwardedHeaders` so the rate limiter partitions on the real client IP
-- [ ] Review rate limiter limits for your expected traffic
+- [ ] Tune `RateLimiting:PermitLimit` / `RateLimiting:WindowSeconds` for your expected traffic (default 120 / 60s per IP)
 
 ---
 
@@ -335,7 +335,14 @@ Automated tests live in `tests/WebhookForge.Tests` (integration via `WebApplicat
 dotnet test
 ```
 
-The suite runs against EF Core InMemory and a stubbed AI provider, so no SQL Server or provider key is needed. See [docs/TESTING.md](docs/TESTING.md) for the full test catalog and the mapping of each security fix to its regression test.
+The suite runs against EF Core InMemory and a stubbed AI provider, so no SQL Server or provider key is needed. It can also run against the **real SQL Server engine** (`WEBHOOKFORGE_TEST_SQL_SERVER='(localdb)\MSSQLLocalDB' dotnet test`), and there's a **live load test** (real Kestrel + SQL Server) under `tests/WebhookForge.LoadTests`:
+
+```powershell
+pwsh tests/run-load-test.ps1 -Mode throughput   # raw capture capacity
+pwsh tests/run-load-test.ps1 -Mode ratelimit    # per-IP limiter under flood
+```
+
+See [docs/TESTING.md](docs/TESTING.md) for the full test catalog, the mapping of each security fix to its regression test, and the latest load-test numbers.
 
 ---
 

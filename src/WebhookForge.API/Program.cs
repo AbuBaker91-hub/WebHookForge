@@ -73,10 +73,13 @@ builder.Services.AddAuthorization();
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
 // Scoped to the public webhook receiver via [EnableRateLimiting("webhook")].
-// Partitioned PER CLIENT IP so each caller gets its own 120 req/min token pool —
+// Partitioned PER CLIENT IP so each caller gets its own token pool —
 // one abusive IP can no longer exhaust the limit for everyone else.
+// Limits are configurable via the "RateLimiting" section (defaults: 120 req / 60 s).
 // NOTE: behind a reverse proxy/load balancer, configure ForwardedHeaders so that
 // RemoteIpAddress reflects the real client and not the proxy.
+var rateLimitPermits = builder.Configuration.GetValue<int?>("RateLimiting:PermitLimit") ?? 120;
+var rateLimitWindowSeconds = builder.Configuration.GetValue<int?>("RateLimiting:WindowSeconds") ?? 60;
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("webhook", httpContext =>
@@ -84,8 +87,8 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                Window               = TimeSpan.FromMinutes(1),
-                PermitLimit          = 120,
+                Window               = TimeSpan.FromSeconds(rateLimitWindowSeconds),
+                PermitLimit          = rateLimitPermits,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit           = 0, // Reject immediately — no queueing
             }));

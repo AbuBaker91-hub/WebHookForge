@@ -11,6 +11,15 @@ dotnet test tests/WebhookForge.Tests                   # just the test project
 dotnet test --filter "FullyQualifiedName~Regression"   # only the regression tests
 ```
 
+By default the suite runs against EF Core **InMemory** — no SQL Server or provider key required. To run the **same suite against the real SQL Server engine** (so "test == live" for EF mappings, `GETUTCDATE()` defaults, and unique indexes that InMemory ignores):
+
+```powershell
+$env:WEBHOOKFORGE_TEST_SQL_SERVER = '(localdb)\MSSQLLocalDB'   # any reachable SQL Server
+dotnet test tests/WebhookForge.Tests
+```
+
+Each test class provisions its own throwaway database and drops it on teardown.
+
 ## What it covers and how
 
 The suite mixes three styles:
@@ -75,11 +84,28 @@ Every issue raised in the code review is now pinned by a test:
 | TC-AI-03 | `Analyze_WithoutProvider_ReturnsBadRequest` | Analyze with no provider configured → 400 |
 | TC-AI-04 | `Profile_NeverExposesApiKey` | `/auth/me` exposes the provider name but never the key |
 
-### Integration — Rate limiting (`RateLimitingRegressionTests`)
+### Integration — Rate limiting, sequential (`RateLimitingRegressionTests`)
 | ID | Test | Asserts |
 |---|---|---|
 | TC-RATE-01 | `SingleIp_IsThrottled_AfterLimit` | One IP is throttled (429) once it exceeds its own 120/min quota |
 | TC-RATE-02 | `ExhaustedIp_DoesNotThrottleOtherIp` | An IP that exhausts its quota does not affect a different IP |
+
+### Integration — Rate limiting, concurrent (`RateLimitConcurrencyTests`)
+| ID | Test | Asserts |
+|---|---|---|
+| TC-RATE-03 | `ParallelBurst_AdmitsAtMostLimit_RestThrottled` | Under a 200-request parallel burst from one IP, **at most 120** are admitted and the rest are 429 (no over-admission under a race) |
+| TC-RATE-04 | `ParallelFloodOnOneIp_DoesNotThrottleAnotherIp` | A concurrent flood on one IP never throttles a different IP |
+
+### Integration — Adversarial / manipulation (`AdversarialEndpointTests`, `ForwardedHeaderSpoofTests`)
+| ID | Test | Asserts |
+|---|---|---|
+| TC-ADV-01 | `OversizedBody_IsCaptured` | A ~1 MB payload is captured, not rejected or crashed |
+| TC-ADV-02 | `MalformedJsonBody_IsCaptured` | Malformed JSON is stored as a raw body (capture never parses it) |
+| TC-ADV-03 | `EmptyBody_IsAccepted` | An empty body is accepted |
+| TC-ADV-04 | `TamperedToken_ReturnsClientError_NotServerError` (×3) | Path-traversal / SQL-ish / null-byte tokens return 4xx, never 5xx |
+| TC-ADV-05 | `VeryLongToken_IsHandledGracefully` | A 4000-char token does not 500 |
+| TC-ADV-06 | `UnsupportedMethod_DoesNotServerError` | `OPTIONS /hooks/{token}` does not 500 |
+| TC-ADV-07 | `SpoofingXForwardedFor_DoesNotBypassPerIpLimit` | Rotating `X-Forwarded-For` does **not** grant fresh quota (the app keys on the real connection IP, not the untrusted header) |
 
 ### Unit — API key protection (`ApiKeyProtectorTests`)
 | ID | Test | Asserts |
@@ -104,10 +130,44 @@ Every issue raised in the code review is now pinned by a test:
 ## Latest run
 
 ```
+# InMemory (default)
 dotnet test tests/WebhookForge.Tests
-Passed!  - Failed: 0, Passed: 33, Skipped: 0, Total: 33, Duration: ~31 s
+Passed!  - Failed: 0, Passed: 44, Skipped: 0, Total: 44, Duration: ~44 s
+
+# Against the real SQL Server engine (LocalDB) — same 44 tests
+WEBHOOKFORGE_TEST_SQL_SERVER='(localdb)\MSSQLLocalDB' dotnet test tests/WebhookForge.Tests
+Passed!  - Failed: 0, Passed: 44, Skipped: 0, Total: 44, Duration: ~57 s
 ```
 
+The full suite passes identically on InMemory and on real SQL Server, so the functional/regression behavior is validated against the live database engine.
+
 > Notes
-> - Integration tests run against EF Core InMemory and a stubbed AI provider, so **no SQL Server or real provider key is required** to run the suite.
+> - Integration tests run against a stubbed AI provider, so **no real provider key is required**.
 > - To smoke-test a **real** AI provider end-to-end, configure a key in the running app (Settings → provider + key) and call `POST /api/requests/{id}/analyze`; the stub is only substituted inside the test host.
+
+---
+
+## Load testing (live)
+
+`tests/WebhookForge.LoadTests` is a standalone HTTP load driver that hits a **real running API** (real Kestrel + real SQL Server), so the numbers reflect production behavior — not the in-memory test transport. It registers a user, creates an endpoint, then floods `POST /hooks/{token}` with N concurrent workers and reports throughput, latency percentiles, and the status-code split.
+
+The rate limit is configurable (`RateLimiting:PermitLimit` / `WindowSeconds`, default 120/60), which lets the same endpoint be measured both with the cap lifted (raw capacity) and with the cap on (protection under flood).
+
+```powershell
+# Orchestrated end-to-end (migrate LocalDB -> launch API -> load -> teardown):
+pwsh tests/run-load-test.ps1 -Mode throughput -DurationSec 20 -Concurrency 64
+pwsh tests/run-load-test.ps1 -Mode ratelimit  -DurationSec 20 -Concurrency 64
+```
+
+### Results (LocalDB, SQL Server 2019, 64 concurrent workers, 20 s, single client IP)
+
+| Scenario | Rate limit | Requests | Captured (2xx) | Throttled (429) | Errors | Throughput | p50 | p95 | p99 |
+|---|---|---|---|---|---|---|---|---|---|
+| **Raw capacity** | lifted | 9,173 | 9,173 | 0 | 0 | **456 req/s** | 122 ms | 281 ms | 702 ms |
+| **Under flood** | 120/min | 193,501 | ~120 | 193,402 | 0 | 9,661 req/s | 5.4 ms | 14.6 ms | 23.7 ms |
+
+**Reading the results:**
+- *Raw capacity* — with the limiter out of the way, the capture path sustained **456 req/s with every request persisted to SQL Server and zero errors**. This is DB-write-bound on a dev-box LocalDB; a real SQL Server / pooled instance would go higher.
+- *Under flood* — a single IP firing ~193k requests in 20 s had only its ~120/min quota admitted; the other **193,402 were rejected at ~5 ms each** — roughly 50× cheaper than an admitted DB write. The per-IP limiter shields the database under abuse exactly as intended, and (TC-ADV-07) `X-Forwarded-For` spoofing can't reset the bucket.
+
+> These are dev-machine figures meant to validate behavior and relative cost, not a capacity guarantee. Re-run on target hardware for sizing.
