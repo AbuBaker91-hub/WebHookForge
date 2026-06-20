@@ -11,8 +11,11 @@ using WebhookForge.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── HTTP client (used by ClaudeService fallback providers) ───────────────────
-builder.Services.AddHttpClient();
+// ── Data Protection ──────────────────────────────────────────────────────────
+// Provides the keyring used to encrypt user AI API keys at rest (ApiKeyProtector).
+// In production, persist keys to a shared, durable store (e.g. Azure Blob + Key Vault)
+// so they survive restarts and are shared across instances.
+builder.Services.AddDataProtection();
 
 // ── Controllers ────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -70,17 +73,22 @@ builder.Services.AddAuthorization();
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
 // Scoped to the public webhook receiver via [EnableRateLimiting("webhook")].
-// 120 requests/min per IP — generous enough for legitimate load tests,
-// tight enough to prevent accidental or malicious flooding.
+// Partitioned PER CLIENT IP so each caller gets its own 120 req/min token pool —
+// one abusive IP can no longer exhaust the limit for everyone else.
+// NOTE: behind a reverse proxy/load balancer, configure ForwardedHeaders so that
+// RemoteIpAddress reflects the real client and not the proxy.
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("webhook", limiter =>
-    {
-        limiter.Window               = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit          = 120;
-        limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        limiter.QueueLimit           = 0; // Reject immediately — no queueing
-    });
+    options.AddPolicy("webhook", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                Window               = TimeSpan.FromMinutes(1),
+                PermitLimit          = 120,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0, // Reject immediately — no queueing
+            }));
 
     options.OnRejected = async (context, ct) =>
     {
@@ -149,3 +157,6 @@ app.MapControllers();
 app.MapHub<WebhookHub>("/hubs/webhook");
 
 app.Run();
+
+// Exposed so the integration test project (WebApplicationFactory<Program>) can boot the real app.
+public partial class Program { }

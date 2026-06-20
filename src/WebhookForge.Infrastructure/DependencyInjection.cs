@@ -49,7 +49,11 @@ public static class DependencyInjection
         services.AddScoped<ITokenService, TokenService>();
 
         // ── AI Analysis service (Claude / Gemini / Groq) ─────────
-        services.AddScoped<IAiAnalysisService, AiAnalysisService>();
+        // Registered as a typed HttpClient so Gemini/Groq calls use a pooled, testable client.
+        services.AddHttpClient<IAiAnalysisService, AiAnalysisService>();
+
+        // ── API key protection (encrypts AI keys at rest) ────────
+        services.AddScoped<IApiKeyProtector, ApiKeyProtector>();
 
         return services;
     }

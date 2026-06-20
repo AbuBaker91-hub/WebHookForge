@@ -27,7 +27,10 @@ public class User : BaseEntity
     /// <summary>Selected AI provider. Null means AI not configured.</summary>
     public AiProvider? AiProvider { get; set; }
 
-    /// <summary>API key for the selected AI provider. Never returned to frontend.</summary>
+    /// <summary>
+    /// API key for the selected AI provider, stored encrypted at rest (ASP.NET Core
+    /// Data Protection). Decrypted only when invoking the provider; never returned to the frontend.
+    /// </summary>
     public string? AiApiKey { get; set; }
 
     // ── Navigation ──────────────────────────────────────────────

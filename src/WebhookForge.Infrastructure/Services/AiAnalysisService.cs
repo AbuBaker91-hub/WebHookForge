@@ -15,7 +15,10 @@ namespace WebhookForge.Infrastructure.Services;
 /// </summary>
 public class AiAnalysisService : IAiAnalysisService
 {
-    private static readonly HttpClient _http = new();
+    private readonly HttpClient _http;
+
+    // HttpClient is injected (typed client) so the Gemini/Groq HTTP calls are testable.
+    public AiAnalysisService(HttpClient http) => _http = http;
 
     /// <inheritdoc/>
     public Task<string> AnalyzeWebhookAsync(
@@ -31,16 +34,16 @@ public class AiAnalysisService : IAiAnalysisService
 
         return provider switch
         {
-            AiProvider.Claude => TryClaudeAsync(apiKey, prompt, ct),
-            AiProvider.Gemini => TryGeminiAsync(apiKey, prompt, ct),
-            AiProvider.Groq   => TryGroqAsync(apiKey, prompt, ct),
+            AiProvider.Claude => CallClaudeAsync(apiKey, prompt, ct),
+            AiProvider.Gemini => CallGeminiAsync(apiKey, prompt, ct),
+            AiProvider.Groq   => CallGroqAsync(apiKey, prompt, ct),
             _                 => Task.FromResult("Unknown AI provider.")
         };
     }
 
     // ── Provider implementations ──────────────────────────────────
 
-    private static async Task<string> TryClaudeAsync(string apiKey, string prompt, CancellationToken ct)
+    private static async Task<string> CallClaudeAsync(string apiKey, string prompt, CancellationToken ct)
     {
         var client   = new AnthropicClient(apiKey);
         var response = await client.Messages.GetClaudeMessageAsync(new MessageParameters
@@ -54,16 +57,21 @@ public class AiAnalysisService : IAiAnalysisService
                ?? "Claude returned an empty response.";
     }
 
-    private static async Task<string> TryGeminiAsync(string apiKey, string prompt, CancellationToken ct)
+    private async Task<string> CallGeminiAsync(string apiKey, string prompt, CancellationToken ct)
     {
-        var url  = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
+        // API key passed via the x-goog-api-key header (not the URL) so it never
+        // leaks into proxy/access logs or request history.
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
+        request.Headers.Add("x-goog-api-key", apiKey);
+
         var body = JsonSerializer.Serialize(new
         {
             contents = new[] { new { parts = new[] { new { text = prompt } } } }
         });
+        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
-        var response = await _http.PostAsync(url,
-            new StringContent(body, Encoding.UTF8, "application/json"), ct);
+        var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct);
@@ -78,7 +86,7 @@ public class AiAnalysisService : IAiAnalysisService
                ?? "Gemini returned an empty response.";
     }
 
-    private static async Task<string> TryGroqAsync(string apiKey, string prompt, CancellationToken ct)
+    private async Task<string> CallGroqAsync(string apiKey, string prompt, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
             "https://api.groq.com/openai/v1/chat/completions");

@@ -23,6 +23,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
                .HasConversion<string>()
                .HasMaxLength(20);
 
+        // Stores the encrypted (Data Protection) form of the key — wider than the raw key to fit the ciphertext.
         builder.Property(u => u.AiApiKey).HasMaxLength(500);
 
         builder.HasIndex(u => u.Email).IsUnique().HasDatabaseName("UX_Users_Email");
