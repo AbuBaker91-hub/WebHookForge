@@ -12,6 +12,7 @@ Guidance for AI agents working in this repository. Keep this file in sync with t
 - **Frontend:** Angular 17.3 (standalone components, signals), `@microsoft/signalr` 8, RxJS 7.8
 - **Auth:** JWT access tokens (15 min) + rotating refresh tokens (30 days), BCrypt password hashing
 - **AI:** Claude (`Anthropic.SDK`), Gemini, Groq — each user brings their own key
+- **RAG:** dedicated PostgreSQL + pgvector store (Npgsql + `Pgvector.EntityFrameworkCore`, HNSW/cosine) via a second `RagDbContext`; OpenAI `text-embedding-3-small` for embeddings
 
 ## Layout
 
@@ -20,8 +21,9 @@ src/
   WebhookForge.Domain/          # Entities, enums — zero external deps
   WebhookForge.Application/      # Interfaces, DTOs, services, Result<T>; depends only on Domain
   WebhookForge.Infrastructure/   # EF Core, repositories, JWT, AI providers, ApiKeyProtector
+    Rag/                         # RAG: RequestChunk entity, RagDbContext (pgvector), TextChunker, Rag/Migrations
   WebhookForge.API/              # Controllers, SignalR hub, middleware, Program.cs (DI composition)
-client/                          # Angular frontend
+client/                          # Angular frontend (RAG UI: features/rag/rag-ask.component, "Ask AI" tab)
 database/                        # Raw SQL schema + dev seed (EF migrations are the source of truth)
 ```
 
@@ -40,6 +42,12 @@ dotnet run --project src/WebhookForge.API          # http://localhost:5000, swag
 dotnet ef database update --project src/WebhookForge.Infrastructure --startup-project src/WebhookForge.API
 dotnet ef migrations add <Name> --project src/WebhookForge.Infrastructure --startup-project src/WebhookForge.API
 
+# RAG / pgvector (second DbContext — ALWAYS pass --context)
+docker compose -f docker-compose.rag.yml up -d
+dotnet ef database update --context RagDbContext --project src/WebhookForge.Infrastructure --startup-project src/WebhookForge.API
+dotnet ef migrations add <Name> --context RagDbContext --output-dir Rag/Migrations --project src/WebhookForge.Infrastructure --startup-project src/WebhookForge.API
+pwsh tests/rag-smoke.ps1 -GenProvider 3 -GenKey $env:WEBHOOKFORGE_GROQ_KEY   # end-to-end RAG smoke (needs API + pgvector + OpenAI key)
+
 # Frontend (from client/)
 npm install
 npm run dev        # ng serve with proxy → forwards /api and /hubs to the API
@@ -52,6 +60,7 @@ npm run build      # production build
 - **Access control:** enforced in the service layer via `AccessGuard` / repository checks, not in controllers. Controllers only carry `[Authorize]` and pass `CurrentUserId`.
 - **Routing:** most controllers use `[Route("api")]` with explicit sub-paths; `BaseController` defaults to `api/[controller]`. Mock-rule item routes are `/api/rules/{id}` (NOT `/api/mock-rules/...`). The Angular client's routes live in `client/src/app/core/constants/api.constants.ts` — keep API routes, that file, and the README API table in agreement.
 - **Webhook hot path:** `EndpointRepository.GetByTokenAsync` is cached in `IMemoryCache` with a dual key (`ep:tok:{token}` + `ep:id:{id}`) so token regeneration can evict correctly. Don't add DB calls to the public `/hooks/{token}` path without considering this cache.
+- **RAG architecture:** two separate stores by design — transactional data in SQL Server (`ApplicationDbContext`), vectors in PostgreSQL/pgvector (`RagDbContext`). `RagDbContext` + `IRagService` + `IEmbeddingService` are registered **only when `ConnectionStrings:RagVectorStore` is set**, so the app runs without Postgres. Keep the two contexts' migrations apart: SQL Server in `Migrations/`, pgvector in `Rag/Migrations/` — every `dotnet ef` call for the vector store MUST pass `--context RagDbContext`. The embedding column is fixed at `vector(1536)`; if you change `Rag:EmbeddingModel`/dimensions, change the column + add a migration. Embeddings use a **server-side** OpenAI key (`Rag:EmbeddingApiKey`); the **answer** reuses the user's provider via `IAiAnalysisService.CompleteAsync` (don't add a second LLM path). Retrieval is always scoped `WHERE EndpointId == …` and gated by `AccessGuard` — keep both.
 
 ## Security model (do not regress)
 

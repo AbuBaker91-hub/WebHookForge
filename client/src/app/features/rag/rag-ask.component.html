@@ -1,0 +1,51 @@
+<section class="rag">
+  <header class="rag__head">
+    <h3>Ask your webhooks</h3>
+    <button class="rag__reindex" (click)="ingest()" [disabled]="ingesting()">
+      {{ ingesting() ? 'Indexing…' : 'Re-index' }}
+    </button>
+  </header>
+
+  @if (ingestMsg()) {
+    <p class="rag__note">{{ ingestMsg() }}</p>
+  }
+
+  <div class="rag__ask">
+    <input
+      type="text"
+      [(ngModel)]="question"
+      (keyup.enter)="ask()"
+      placeholder="e.g. Which webhooks were payment failures?"
+      [disabled]="asking()" />
+    <button (click)="ask()" [disabled]="asking() || !question.trim()">
+      {{ asking() ? 'Thinking…' : 'Ask' }}
+    </button>
+  </div>
+
+  @if (error()) {
+    <p class="rag__error">{{ error() }}</p>
+  }
+
+  @if (answer(); as a) {
+    <div class="rag__answer">
+      <p class="rag__answer-text">{{ a.answer }}</p>
+
+      @if (a.citations.length) {
+        <h4>Sources ({{ a.chunksRetrieved }})</h4>
+        <ul class="rag__cites">
+          @for (c of a.citations; track c.requestId; let i = $index) {
+            <li>
+              <span class="rag__cite-tag">[{{ i + 1 }}]</span>
+              <span class="rag__cite-meta">
+                {{ c.method }} {{ c.path || '/' }} ·
+                {{ c.receivedAt | date:'short' }} ·
+                match {{ c.score | number:'1.0-2' }}
+              </span>
+              <span class="rag__cite-snip">{{ c.snippet }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  }
+</section>

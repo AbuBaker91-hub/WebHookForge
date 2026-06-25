@@ -1,0 +1,28 @@
+# Dedicated PostgreSQL + pgvector instance for the RAG vector store.
+# The main app keeps using SQL Server; only the vector workload lives here.
+#
+#   docker compose -f docker-compose.rag.yml up -d
+#
+# Connection string (already set in appsettings.Development.json):
+#   Host=localhost;Port=5433;Database=webhookforge_rag;Username=rag;Password=ragpass
+services:
+  rag-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: webhookforge-rag-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ragpass
+      POSTGRES_DB: webhookforge_rag
+    ports:
+      - "5433:5432"
+    volumes:
+      - rag_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d webhookforge_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rag_pgdata:

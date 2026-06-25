@@ -15,13 +15,14 @@ import { HttpMethodPipe }                               from '../../../shared/pi
 import { FileSizePipe }                                 from '../../../shared/pipes/file-size.pipe';
 import { PrettyJsonPipe }                               from '../../../shared/pipes/pretty-json.pipe';
 import { ObjectEntriesPipe }                            from '../../../shared/pipes/object-entries.pipe';
+import { RagAskComponent }                              from '../../rag/rag-ask.component';
 
-type Tab = 'requests' | 'rules' | 'settings';
+type Tab = 'requests' | 'rules' | 'settings' | 'ask';
 
 @Component({
   selector:    'app-endpoint-detail',
   standalone:  true,
-  imports:     [RouterLink, FormsModule, DatePipe, NgClass, SvgIconDirective, HttpMethodPipe, FileSizePipe, PrettyJsonPipe, ObjectEntriesPipe],
+  imports:     [RouterLink, FormsModule, DatePipe, NgClass, SvgIconDirective, HttpMethodPipe, FileSizePipe, PrettyJsonPipe, ObjectEntriesPipe, RagAskComponent],
   templateUrl: './endpoint-detail.component.html',
   styleUrls:   ['./endpoint-detail.component.scss']
 })

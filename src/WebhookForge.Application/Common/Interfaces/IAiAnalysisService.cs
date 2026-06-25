@@ -19,4 +19,15 @@ public interface IAiAnalysisService
         string?    headers,
         string?    body,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Runs an arbitrary prompt through the selected provider and returns the completion text.
+    /// Used by the RAG pipeline to generate grounded answers from retrieved context.
+    /// </summary>
+    Task<string> CompleteAsync(
+        AiProvider provider,
+        string     apiKey,
+        string     prompt,
+        int        maxTokens = 800,
+        CancellationToken ct = default);
 }

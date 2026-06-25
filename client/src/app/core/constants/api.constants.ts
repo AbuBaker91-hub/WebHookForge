@@ -36,6 +36,8 @@ export const API = {
     requests:        (id: string)    => `${base}/endpoints/${id}/requests`,
     rules:           (id: string)    => `${base}/endpoints/${id}/rules`,
     reorder:         (id: string)    => `${base}/endpoints/${id}/rules/reorder`,
+    ragIngest:       (id: string)    => `${base}/endpoints/${id}/rag/ingest`,
+    ragAsk:          (id: string)    => `${base}/endpoints/${id}/rag/ask`,
   },
 
   requests: {

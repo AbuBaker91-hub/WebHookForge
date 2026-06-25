@@ -43,6 +43,9 @@
         <span class="tab-count">{{ rules().length }}</span>
       }
     </button>
+    <button class="tab" [class.active]="activeTab() === 'ask'" (click)="activeTab.set('ask')">
+      Ask AI
+    </button>
     <button class="tab" [class.active]="activeTab() === 'settings'" (click)="activeTab.set('settings')">
       Settings
     </button>
@@ -291,6 +294,13 @@
           </p>
         </div>
       </div>
+    </div>
+  }
+
+  <!-- ── Ask AI Tab (RAG) ─────────────────────────────────────────────────── -->
+  @if (activeTab() === 'ask') {
+    <div class="ask-pane">
+      <app-rag-ask [endpointId]="ep.id" />
     </div>
   }
 

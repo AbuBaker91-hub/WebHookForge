@@ -20,6 +20,11 @@ public sealed class StubAiAnalysisService : IAiAnalysisService
         AiProvider provider, string apiKey, string method, string? path,
         string? headers, string? body, CancellationToken ct = default)
         => Task.FromResult($"{Marker} provider={provider} method={method}");
+
+    public Task<string> CompleteAsync(
+        AiProvider provider, string apiKey, string prompt,
+        int maxTokens = 800, CancellationToken ct = default)
+        => Task.FromResult($"{Marker} provider={provider} completion");
 }
 
 /// <summary>

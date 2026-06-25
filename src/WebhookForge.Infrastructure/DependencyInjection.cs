@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using WebhookForge.Application.Common.Interfaces;
 using WebhookForge.Domain.Entities;
 using WebhookForge.Infrastructure.Data;
+using WebhookForge.Infrastructure.Rag;
 using WebhookForge.Infrastructure.Repositories;
 using WebhookForge.Infrastructure.Services;
 using WebhookForge.Application.Common.Settings;
@@ -54,6 +55,26 @@ public static class DependencyInjection
 
         // ── API key protection (encrypts AI keys at rest) ────────
         services.AddScoped<IApiKeyProtector, ApiKeyProtector>();
+
+        // ── RAG: pgvector store + embeddings + retrieval/generation ──
+        // Vector workload lives in a dedicated Postgres DB (pgvector), separate from the
+        // transactional SQL Server DB. Registered only when a connection string is present
+        // so the rest of the app runs without Postgres during development.
+        services.Configure<RagSettings>(configuration.GetSection("Rag"));
+
+        var ragConnection = configuration.GetConnectionString("RagVectorStore");
+        if (!string.IsNullOrWhiteSpace(ragConnection))
+        {
+            services.AddDbContext<RagDbContext>(options =>
+                options.UseNpgsql(ragConnection, npgsql =>
+                {
+                    npgsql.UseVector();
+                    npgsql.MigrationsAssembly(typeof(RagDbContext).Assembly.FullName);
+                }));
+
+            services.AddHttpClient<IEmbeddingService, OpenAiEmbeddingService>();
+            services.AddScoped<IRagService, RagService>();
+        }
 
         return services;
     }
